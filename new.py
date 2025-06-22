@@ -6,24 +6,25 @@ import pandas as pd
 import pickle
 import requests
 
-# ----------- Google Drive download for large file -----------
-
-import os
+# ----------- Load environment variables safely -----------
 SIMILARITY_FILE_ID = os.getenv("SIMILARITY_FILE_ID")
+api_key = os.getenv("TMDB_API_KEY")
 
-  # <-- Replace with your actual file ID
+if not SIMILARITY_FILE_ID:
+    st.error("❌ SIMILARITY_FILE_ID is not set in the environment.")
+    st.stop()
+if not api_key:
+    st.error("❌ TMDB_API_KEY is not set in the environment.")
+    st.stop()
+
+# ----------- Google Drive download for large file -----------
 SIMILARITY_FILE = "similarity.pkl"
-
 if not Path(SIMILARITY_FILE).exists():
     url = f"https://drive.google.com/uc?id={SIMILARITY_FILE_ID}"
     gdown.download(url, SIMILARITY_FILE, quiet=False)
 
-# ----------- API Key from environment variable (safe handling) -----------
-api_key = os.getenv("TMDB_API_KEY")
-
 # ----------- TMDB Poster & Trailer fetch function -----------
 def fetch_movie_details(movie_id):
-    """Fetch poster URL, overview, and trailer URL from TMDB"""
     url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={api_key}&append_to_response=videos"
     response = requests.get(url)
     if response.status_code != 200:
@@ -32,7 +33,7 @@ def fetch_movie_details(movie_id):
 
     poster_url = f"https://image.tmdb.org/t/p/w500{data.get('poster_path', '')}"
     overview = data.get('overview', 'No description available.')
-    
+
     trailer_url = None
     videos = data.get("videos", {}).get("results", [])
     for video in videos:
@@ -44,7 +45,6 @@ def fetch_movie_details(movie_id):
 
 # ----------- Recommendation Function -----------
 def recommend(movie_title):
-    """Return top 5 similar movie titles, posters, and trailers."""
     index = movies_df[movies_df['title'] == movie_title].index[0]
     distances = similarity[index]
     movie_indices = sorted(list(enumerate(distances)), key=lambda x: x[1], reverse=True)[1:6]
@@ -64,19 +64,21 @@ def recommend(movie_title):
     return recommended_data
 
 # ----------- Load Data -----------
-movies_df = pickle.load(open('movies.pkl', 'rb'))
-similarity = pickle.load(open('similarity.pkl', 'rb'))
+with open('movies.pkl', 'rb') as f:
+    movies_df = pickle.load(f)
+
+with open('similarity.pkl', 'rb') as f:
+    similarity = pickle.load(f)
+
 movie_titles = movies_df['title'].tolist()
 
 # ----------- Streamlit App UI -----------
 st.set_page_config(page_title="🎥 Movie Recommender", layout="wide")
 st.markdown("<h1 style='text-align: center;'>🎬 Personalized Movie Recommender</h1>", unsafe_allow_html=True)
 
-# Dropdown for movie selection
 st.markdown("## 🔍 Choose a movie you liked:")
 selected_movie = st.selectbox("Pick a movie", movie_titles)
 
-# Recommend Button
 if st.button("🔮 Recommend Similar Movies"):
     with st.spinner("Fetching recommendations..."):
         recommendations = recommend(selected_movie)
@@ -94,6 +96,5 @@ if st.button("🔮 Recommend Similar Movies"):
             if movie["trailer"]:
                 st.markdown(f"[▶ Watch Trailer]({movie['trailer']})", unsafe_allow_html=True)
 
-# Optional Reset Button
 if st.button("🔄 Reset"):
     st.rerun()
